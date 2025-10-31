@@ -1,5 +1,5 @@
 import psycopg2
-from datetime import date, timedelta
+from datetime import date
 import argparse
 import os
 from psycopg2.extras import RealDictCursor
@@ -22,27 +22,6 @@ class HabitTracker:
         cursor_factory=RealDictCursor
     )
         self.cursor = self.conn.cursor()
-        self.setup_tables()
-
-    def setup_tables(self):
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS habits (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                frequency TEXT CHECK (frequency IN ('Daily', 'Weekly')) NOT NULL
-            );
-        """)
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS habit_completions (
-                id SERIAL PRIMARY KEY,
-                habit_id INTEGER REFERENCES habits(id),
-                completed_on DATE NOT NULL
-            );
-        """)
-        self.conn.commit()
-        print("Tables setup!")
-        print("Type: \"python habit_tracker.py -h\" for help")
-
 
     def add_habit(self, habit):
         self.cursor.execute(
@@ -121,7 +100,14 @@ class HabitTracker:
                 streak = self.longest_streak_for_habit(habit_id)
             except Exception as e:
                 print(f"Error calculating streak for habit {habit_id}: {e}")
-            continue
+                continue
+
+            if streak is None:
+                streak = 0
+            try:
+                streak = int(streak)
+            except Exception:
+                streak = 0
             
             if streak > max_streak:
                 max_streak = streak
@@ -129,64 +115,51 @@ class HabitTracker:
 
         return (*best_habit, max_streak) if best_habit else None
 
-    def insert_dummy_data(self):
-        habits = [
-            ("Morning Meditation", "Daily"),
-            ("Weekly Gym Session", "Weekly"),
-            ("Read 10 Pages", "Daily"),
-            ("Sunday Meal Prep", "Weekly"),
-            ("Write Journal Entry", "Daily")
-        ]
-        for name, freq in habits:
-            self.cursor.execute("INSERT INTO habits (name, frequency) VALUES (%s, %s)", (name, freq))
-        self.conn.commit()
-
-        completions = {
-            1: [date(2025, 9, 22) + timedelta(days=i) for i in range(28)],
-            2: [date(2025, 9, 23), date(2025, 9, 30), date(2025, 10, 7), date(2025, 10, 14)],
-            3: [date(2025, 9, 22), date(2025, 9, 23), date(2025, 9, 25), date(2025, 9, 27),
-                date(2025, 9, 30), date(2025, 10, 1), date(2025, 10, 3), date(2025, 10, 5),
-                date(2025, 10, 8), date(2025, 10, 10), date(2025, 10, 12), date(2025, 10, 14),
-                date(2025, 10, 17), date(2025, 10, 19)],
-            4: [date(2025, 9, 28), date(2025, 10, 5), date(2025, 10, 12), date(2025, 10, 19)],
-            5: [date(2025, 9, 22) + timedelta(days=i) for i in range(14)] +
-               [date(2025, 10, 13) + timedelta(days=i) for i in range(7)]
-        }
-
-        for habit_id, dates in completions.items():
-            for d in dates:
-                self.cursor.execute(
-                    "INSERT INTO habit_completions (habit_id, completed_on) VALUES (%s, %s)",
-                    (habit_id, d)
-                )
-        self.conn.commit()
-
     def close(self):
-        self.cursor.close()
-        self.conn.close()
+        try:
+            if hasattr(self, 'cursor') and self.cursor:
+                self.cursor.close()
+        except Exception:
+            pass
+        try:
+            if hasattr(self, 'conn') and self.conn:
+                self.conn.close()
+        except Exception:
+            pass
 
 def main():
     parser = argparse.ArgumentParser(description=" Welcome to Habit Tracker Interface")
     parser.add_argument("action", choices=[
         
         "add",
-        "\n   list_all", 
-        "\n   list_by_frequency", 
-        "\n   complete",
-        "\n   longest_streak_for", 
-        "\n   longest_streak_all", 
-        "\n   insert_dummy"
+        "list_all",
+        "list_by_frequency", 
+        "complete",
+        "longest_streak_for", 
+        "longest_streak_all", 
+        "insert_dummy"
     ])
-    parser.add_argument("--name", help="Habit name")
+    parser.add_argument("--name", nargs="+", help="Habit name")
     parser.add_argument("--frequency", help="Daily or Weekly")
     parser.add_argument("--id", type=int, help="Habit ID")
     args = parser.parse_args()
+
+    if args.name:
+    # join multiword name into a single string
+        name = " ".join(args.name)
+    else:
+        name = None
+
+    if name:
+        name = name.strip()
+        if name.startswith("{") and name.endswith("}"):
+            name = name[1:-1].strip() 
 
     tracker = HabitTracker()
 
     if args.action == "add":
         if args.name and args.frequency:
-            habit = Habit(args.name, args.frequency)
+            habit = Habit(name, args.frequency)
             tracker.add_habit(habit)
             print("Habit added.")
         else:
@@ -219,14 +192,9 @@ def main():
         if result:
             print(f"Longest streak: {result[2]} (Habit {result[0]}: {result[1]})")
         else:
-            print("No streaks found.")
-    elif args.action == "insert_dummy":
-        tracker.insert_dummy_data()
-        print("Dummy data inserted.")
-
-
-
-    tracker.close()
+            print("No streaks found!")
+    
+        tracker.close()
 
 if __name__ == "__main__":
     main()
