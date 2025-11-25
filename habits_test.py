@@ -1,4 +1,14 @@
 import os
+
+# Set test DB environment variables BEFORE importing HabitTracker
+os.environ["PGHOST"] = "localhost"
+os.environ["PGPORT"] = "5432"
+os.environ["PGUSER"] = "tutor"
+os.environ["PGPASSWORD"] = "warren"
+os.environ["PGDATABASE"] = "habitdb_test"
+
+
+
 import pytest
 import psycopg2
 from datetime import date
@@ -19,7 +29,7 @@ def tracker():
     for key, value in TEST_DB_CONFIG.items():
         os.environ[f"PG{key.upper()}"] = value
     ht = HabitTracker()
-    ht.cursor.execute("DELETE FROM habit_completions;")
+    ht.cursor.execute("DELETE FROM test_habit_completions;")
     ht.cursor.execute("DELETE FROM habits;")
     ht.conn.commit()
     yield ht
@@ -43,7 +53,7 @@ def test_mark_completed(tracker):
     tracker.add_habit(habit)
     habit_id = tracker.list_all_habits()[0]["id"]
     tracker.mark_completed(habit_id)
-    tracker.cursor.execute("SELECT * FROM habit_completions WHERE habit_id = %s", (habit_id,))
+    tracker.cursor.execute("SELECT * FROM test_habit_completions WHERE habit_id = %s", (habit_id,))
     completions = tracker.cursor.fetchall()
     assert len(completions) == 1
     assert completions[0]["completed_on"] == date.today()
@@ -57,7 +67,7 @@ def test_longest_streak_for_daily(tracker):
     for i in range(5):
         d = date.today().replace(day=date.today().day - i - 1)
         tracker.cursor.execute(
-            "INSERT INTO habit_completions (habit_id, completed_on) VALUES (%s, %s)",
+            "INSERT INTO test_habit_completions (habit_id, completed_on) VALUES (%s, %s)",
             (habit_id, d)
         )
     tracker.conn.commit()
@@ -72,7 +82,7 @@ def test_longest_streak_for_weekly(tracker):
     for i in range(3):
         wk = date.today().replace(day=date.today().day - i * 7 - 1)
         tracker.cursor.execute(
-            "INSERT INTO habit_completions (habit_id, completed_on) VALUES (%s, %s)",
+            "INSERT INTO test_habit_completions (habit_id, completed_on) VALUES (%s, %s)",
             (habit_id, wk)
         )
     tracker.conn.commit()
@@ -87,12 +97,12 @@ def test_longest_streak_all(tracker):
     # Habit A: 2-day streak
     for i in range(2):
         d = date.today().replace(day=date.today().day - i - 1)
-        tracker.cursor.execute("INSERT INTO habit_completions (habit_id, completed_on) VALUES (%s, %s)", (ids[0], d))
+        tracker.cursor.execute("INSERT INTO test_habit_completions (habit_id, completed_on) VALUES (%s, %s)", (ids[0], d))
         
     # Habit B: 4-day streak
     for i in range(4):
         d = date.today().replace(day=date.today().day - i - 1)
-        tracker.cursor.execute("INSERT INTO habit_completions (habit_id, completed_on) VALUES (%s, %s)", (ids[1], d))
+        tracker.cursor.execute("INSERT INTO test_habit_completions (habit_id, completed_on) VALUES (%s, %s)", (ids[1], d))
     tracker.conn.commit()
     result = tracker.longest_streak_all()
     assert result[0] == ids[1]
