@@ -29,7 +29,7 @@ def tracker():
     for key, value in TEST_DB_CONFIG.items():
         os.environ[f"PG{key.upper()}"] = value
     ht = HabitTracker()
-    ht.cursor.execute("DELETE FROM test_habit_completions;")
+    ht.cursor.execute("DELETE FROM habit_completions;")
     ht.cursor.execute("DELETE FROM habits;")
     ht.conn.commit()
     yield ht
@@ -48,12 +48,34 @@ def test_add_habit(tracker):
     assert habits[0]["name"] == "Test Habit"
     assert habits[0]["frequency"] == "Daily"
 
+def test_list_all_habits(tracker):
+    # Add multiple habits
+    tracker.add_habit(Habit("Read", "Daily"))
+    tracker.add_habit(Habit("Workout", "Weekly"))
+    tracker.add_habit(Habit("Meditate", "Daily"))
+
+    habits = tracker.list_all_habits()
+
+    # Check that all habits are returned
+    assert len(habits) == 3
+
+    # Extract names and frequencies for easy comparison
+    names = [h["name"] for h in habits]
+    freqs = [h["frequency"] for h in habits]
+
+    assert "Read" in names
+    assert "Workout" in names
+    assert "Meditate" in names
+
+    assert freqs.count("Daily") == 2
+    assert freqs.count("Weekly") == 1
+
 def test_mark_completed(tracker):
     habit = Habit("Water", "Daily")
     tracker.add_habit(habit)
     habit_id = tracker.list_all_habits()[0]["id"]
     tracker.mark_completed(habit_id)
-    tracker.cursor.execute("SELECT * FROM test_habit_completions WHERE habit_id = %s", (habit_id,))
+    tracker.cursor.execute("SELECT * FROM habit_completions WHERE habit_id = %s", (habit_id,))
     completions = tracker.cursor.fetchall()
     assert len(completions) == 1
     assert completions[0]["completed_on"] == date.today()
@@ -67,12 +89,13 @@ def test_longest_streak_for_daily(tracker):
     for i in range(5):
         d = date.today().replace(day=date.today().day - i - 1)
         tracker.cursor.execute(
-            "INSERT INTO test_habit_completions (habit_id, completed_on) VALUES (%s, %s)",
+            "INSERT INTO habit_completions (habit_id, completed_on) VALUES (%s, %s)",
             (habit_id, d)
         )
     tracker.conn.commit()
     streak = tracker.longest_streak_for_habit(habit_id)
     assert streak == 5
+
 def test_longest_streak_for_weekly(tracker):
     habit = Habit("Gym", "Weekly")
     tracker.add_habit(habit)
@@ -82,28 +105,44 @@ def test_longest_streak_for_weekly(tracker):
     for i in range(3):
         wk = date.today().replace(day=date.today().day - i * 7 - 1)
         tracker.cursor.execute(
-            "INSERT INTO test_habit_completions (habit_id, completed_on) VALUES (%s, %s)",
+            "INSERT INTO habit_completions (habit_id, completed_on) VALUES (%s, %s)",
             (habit_id, wk)
         )
     tracker.conn.commit()
     streak = tracker.longest_streak_for_habit(habit_id)
     assert streak == 3
 
-def test_longest_streak_all(tracker):
-    tracker.add_habit(Habit("A", "Daily"))
-    tracker.add_habit(Habit("B", "Daily"))
-    ids = [h["id"] for h in tracker.list_all_habits()]
+from datetime import date, timedelta
 
-    # Habit A: 2-day streak
-    for i in range(2):
-        d = date.today().replace(day=date.today().day - i - 1)
-        tracker.cursor.execute("INSERT INTO test_habit_completions (habit_id, completed_on) VALUES (%s, %s)", (ids[0], d))
-        
-    # Habit B: 4-day streak
+def test_longest_streak_all_mixed_frequencies(tracker):
+    # Add one daily and one weekly habit
+    tracker.add_habit(Habit("Journal", "Daily"))
+    tracker.add_habit(Habit("Yoga Class", "Weekly"))
+
+    habits = tracker.list_all_habits()
+    habit_ids = {h["name"]: h["id"] for h in habits}
+
+    # Daily habit: 4-day streak ending yesterday
     for i in range(4):
-        d = date.today().replace(day=date.today().day - i - 1)
-        tracker.cursor.execute("INSERT INTO test_habit_completions (habit_id, completed_on) VALUES (%s, %s)", (ids[1], d))
+        d = date.today() - timedelta(days=i + 1)
+        tracker.cursor.execute(
+            "INSERT INTO habit_completions (habit_id, completed_on) VALUES (%s, %s)",
+            (habit_ids["Journal"], d)
+        )
+
+    # Weekly habit: 5-week streak ending last Monday
+    last_monday = date.today() - timedelta(days=date.today().weekday() + 7)
+    for i in range(5):
+        week_date = last_monday - timedelta(weeks=i)
+        tracker.cursor.execute(
+            "INSERT INTO habit_completions (habit_id, completed_on) VALUES (%s, %s)",
+            (habit_ids["Yoga Class"], week_date)
+        )
+
     tracker.conn.commit()
+
     result = tracker.longest_streak_all()
-    assert result[0] == ids[1]
-    assert result[2] == 4
+
+    assert result is not None
+    assert result[1] == "Yoga Class"
+    assert result[2] == 5

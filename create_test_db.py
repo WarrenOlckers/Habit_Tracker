@@ -79,9 +79,9 @@ def create_test_tables():
         );
     """)
 
-    # Create test_habit_completions table
+    # Create habit_completions table
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS test_habit_completions (
+        CREATE TABLE IF NOT EXISTS habit_completions (
             id SERIAL PRIMARY KEY,
             habit_id INTEGER REFERENCES habits(id) ON DELETE CASCADE,
             completed_on DATE NOT NULL,
