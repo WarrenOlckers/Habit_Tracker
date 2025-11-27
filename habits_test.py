@@ -11,7 +11,7 @@ os.environ["PGDATABASE"] = "habitdb_test"
 
 import pytest
 import psycopg2
-from datetime import date
+from datetime import date, timedelta
 from Habit_Tracker2 import Habit, HabitTracker
 
 # Use a test database (make sure it's created and isolated)
@@ -111,8 +111,6 @@ def test_longest_streak_for_weekly(tracker):
     tracker.conn.commit()
     streak = tracker.longest_streak_for_habit(habit_id)
     assert streak == 3
-
-from datetime import date, timedelta
 
 def test_longest_streak_all_mixed_frequencies(tracker):
     # Add one daily and one weekly habit

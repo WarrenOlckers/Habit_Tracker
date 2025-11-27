@@ -43,12 +43,24 @@ class HabitTracker:
 
     def mark_completed(self, habit_id):
         today = date.today()
-        self.cursor.execute(
-            "INSERT INTO habit_completions (habit_id, completed_on) VALUES (%s, %s)",
-            (habit_id, today)
-        )
-        self.conn.commit()
-
+        try:
+            self.cursor.execute(
+                "INSERT INTO habit_completions (habit_id, completed_on) VALUES (%s, %s)",
+                (habit_id, today)
+            )
+            self.conn.commit()
+            # Confirm insert
+            self.cursor.execute("SELECT * FROM habit_completions WHERE habit_id = %s", (habit_id,))
+            rows = self.cursor.fetchall()
+            print(f" Completions for habit {habit_id}: {rows}")
+            return f"Habit {habit_id} marked as completed on {today}."
+        except psycopg2.errors.UniqueViolation:
+            self.conn.rollback()
+            return f"Habit {habit_id} was already marked as completed today."
+        except Exception as e:
+            self.conn.rollback()
+            return f"Error marking habit {habit_id} as completed: {e}"
+        
     def longest_streak_for_habit(self, habit_id):
         self.cursor.execute("SELECT frequency FROM habits WHERE id = %s", (habit_id,))
         freq = self.cursor.fetchone()['frequency']
@@ -177,8 +189,8 @@ def main():
             print("Please provide --frequency Daily or Weekly.")
     elif args.action == "complete":
         if args.id:
-            tracker.mark_completed(args.id)
-            print("Habit marked as completed.")
+            message = tracker.mark_completed(args.id)
+            print(message)
         else:
             print("Please provide --id.")
     elif args.action == "longest_streak_for":
